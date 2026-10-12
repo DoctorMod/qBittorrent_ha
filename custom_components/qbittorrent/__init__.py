@@ -37,7 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             config_entry.data[CONF_URL],
             config_entry.data[CONF_USERNAME],
             config_entry.data[CONF_PASSWORD],
-            config_entry.data[CONF_VERIFY_SSL],
+            config_entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
         )
         hass.data[DOMAIN][config_entry.entry_id] = client
 

@@ -26,7 +26,14 @@ def setup_client(url: str, username: str, password: str, verify_ssl: bool):
     # Errors raised will be captured by the calling function
 
     try:
-        client = qbittorrentapi.Client(host = url, VERIFY_WEBUI_CERTIFICATE = verify_ssl, SIMPLE_RESPONSES = True, REQUESTS_ARGS={'timeout': (3, 5)})
+        client = qbittorrentapi.Client(
+            host=url,
+            username=username,
+            password=password,
+            VERIFY_WEBUI_CERTIFICATE=verify_ssl,
+            SIMPLE_RESPONSES=True,
+            REQUESTS_ARGS={"timeout": (3, 5)},
+        )
 
         # Test the provided credentials
         client.auth_log_in(username = username, password = password)

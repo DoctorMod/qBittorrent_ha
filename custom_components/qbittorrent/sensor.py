@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 import qbittorrentapi
-from qbittorrentapi import Client, LoginFailed, APIConnectionError
+from qbittorrentapi import Client, LoginFailed, APIConnectionError, Forbidden403Error
 from requests.exceptions import RequestException, ConnectTimeout
 import voluptuous as vol
 
@@ -23,6 +23,7 @@ from homeassistant.const import (
     CONF_URL,
     CONF_USERNAME,
     CONF_SCAN_INTERVAL,
+    PERCENTAGE,
     STATE_IDLE,
     UnitOfDataRate,
     UnitOfTime
@@ -72,6 +73,18 @@ SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
         name="ETA",
         icon="mdi:cloud-clock",
         native_unit_of_measurement=UnitOfTime.SECONDS
+    ),
+    SensorEntityDescription(
+        key=SENSOR_TYPE_LONGEST_ETA_TORRENT_NAME,
+        name="ETA torrent name",
+        icon="mdi:file-document-outline",
+    ),
+    SensorEntityDescription(
+        key=SENSOR_TYPE_LONGEST_ETA_TORRENT_PROGRESS,
+        name="ETA torrent download",
+        icon="mdi:percent",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
     ),
 )
 
@@ -152,7 +165,10 @@ class QBittorrentSensor(SensorEntity):
             if not self._attr_available:
                 # Try to log in again to recreate the session or update the cookie
                 LOGGER.debug(f"Attempting to log in after disconnection")
-                self.client.auth_log_in()
+                self.client.auth_log_in(
+                    username=self.config_entry.data.get(CONF_USERNAME),
+                    password=self.config_entry.data.get(CONF_PASSWORD),
+                )
 
             if self.client.is_logged_in:
                 # Get the most recent data from the API
@@ -206,6 +222,20 @@ class QBittorrentSensor(SensorEntity):
         sensor_type = self.entity_description.key
         download = data["server_state"]["dl_info_speed"]
         upload = data["server_state"]["up_info_speed"]
+
+        longest_eta = 0
+        longest_eta_torrent = None
+        try:
+            torrents = data["torrents"]
+            for torrent in torrents.values():
+                torrent_eta = torrent.get("eta", 0)
+                if torrent_eta != 8640000 and torrent_eta > longest_eta:
+                    longest_eta = torrent_eta
+                    longest_eta_torrent = torrent
+
+        except Exception:
+            longest_eta = 0
+            longest_eta_torrent = None
         
         if sensor_type == SENSOR_TYPE_CURRENT_STATUS:
             if upload > 0 and download > 0:
@@ -242,19 +272,19 @@ class QBittorrentSensor(SensorEntity):
             self._attr_native_value = downloading
 
         elif sensor_type == SENSOR_TYPE_LONGEST_ETA:
-            longest_eta = 0
-            try:
-                torrents = data["torrents"]
-                for torrent in torrents:
-                    if torrents[torrent]["eta"] != 8640000 and torrents[torrent]["eta"] > longest_eta:
-                        longest_eta = torrents[torrent]["eta"]
-
-                self._attr_available = True
-
-            except:
-                self._attr_available = False
-
             self._attr_native_value = longest_eta
+
+        elif sensor_type == SENSOR_TYPE_LONGEST_ETA_TORRENT_NAME:
+            if longest_eta_torrent is not None:
+                self._attr_native_value = longest_eta_torrent.get("name")
+            else:
+                self._attr_native_value = None
+
+        elif sensor_type == SENSOR_TYPE_LONGEST_ETA_TORRENT_PROGRESS:
+            if longest_eta_torrent is not None:
+                self._attr_native_value = round(longest_eta_torrent.get("progress", 0) * 100, 1)
+            else:
+                self._attr_native_value = 0
 
     @property
     def device_info(self):
